@@ -1,0 +1,318 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>주인을 알 수 없는 휴대폰</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      background-color: black;
+      color: white;
+      font-family: 'Pretendard', sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .time-display {
+      margin-top: 15px;
+      font-size: 21px;
+      letter-spacing: 3px;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 40px);
+      grid-gap: 12px;
+      margin-top: 21px;
+      margin-bottom: 10px;
+      z-index: 2;
+    }
+
+    .dot {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: 1px solid white;
+      background-color: transparent;
+      transition: border 0.2s;
+      touch-action: none;
+    }
+
+    .dot.error {
+      border-color: red !important;
+    }
+
+    #message {
+      position: absolute;
+      top: 20px;
+      left: 10px;
+      right: 10px;
+      padding: 6px 8px;
+      text-align: left;
+      font-size: 0.6em;
+      white-space: pre-wrap;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      max-height: 60vh;
+      overflow-y: visible;
+      box-sizing: border-box;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 4px;
+    }
+
+
+    #lockoutMessage {
+      font-size: 0.9em;
+      color: #ccc;
+      margin-bottom: 20px;
+      text-align: center;  /* 중앙 정렬 */
+      white-space: pre-line; /* 줄바꿈이 텍스트에 반영되도록 */
+    }
+
+    .shake {
+      animation: shake 0.2s;
+    }
+
+    @keyframes shake {
+      0% {
+        transform: translateX(0);
+      }
+      25% {
+        transform: translateX(-10px);
+      }
+      50% {
+        transform: translateX(10px);
+      }
+      75% {
+        transform: translateX(-10px);
+      }
+      100% {
+        transform: translateX(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container" id="container">
+    <div class="time-display" id="timeDisplay">00:00</div>
+    <canvas id="lineCanvas"></canvas>
+    <div class="grid" id="patternWrapper">
+      <div class="dot" data-id="1"></div>
+      <div class="dot" data-id="2"></div>
+      <div class="dot" data-id="3"></div>
+      <div class="dot" data-id="4"></div>
+      <div class="dot" data-id="5"></div>
+      <div class="dot" data-id="6"></div>
+      <div class="dot" data-id="7"></div>
+      <div class="dot" data-id="8"></div>
+      <div class="dot" data-id="9"></div>
+    </div>
+    <div id="lockoutMessage"></div>
+    <div id="message"></div>
+  </div>
+
+  <script>
+    const correctPattern = [7, 4, 1, 2, 3, 5, 6, 8];
+    let userPattern = [];
+    let selectedDots = [];
+    let dragging = false;
+    let currentPos = { x: 0, y: 0 };
+    let messageShown = false;
+    let failureCount = 0;
+    let isLockedOut = false;
+    let lockoutTimer = 30;
+    let lockoutInterval;
+
+    const canvas = document.getElementById("lineCanvas");
+    const ctx = canvas.getContext("2d");
+    const container = document.getElementById("container");
+    const dots = Array.from(document.querySelectorAll(".dot"));
+    const patternWrapper = document.getElementById("patternWrapper");
+    const lockoutMessage = document.getElementById("lockoutMessage");
+    const timeDisplay = document.getElementById("timeDisplay");
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+
+    function getDotCenter(dot) {
+      const rect = dot.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    }
+
+    function redrawLines(color = "white") {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let i = 0; i < selectedDots.length; i++) {
+        const center = getDotCenter(selectedDots[i]);
+        if (i === 0) {
+          ctx.moveTo(center.x, center.y);
+        } else {
+          ctx.lineTo(center.x, center.y);
+        }
+      }
+      if (dragging) {
+        ctx.lineTo(currentPos.x, currentPos.y);
+      }
+      ctx.stroke();
+    }
+
+    function isCorrect() {
+      return (
+        userPattern.length === correctPattern.length &&
+        correctPattern.every((val, index) => userPattern[index] === val)
+      );
+    }
+
+    function checkPattern() {
+      if (isCorrect()) {
+        showMessage("이 편지는 영국에서 최초로 시작되어 일년에 한바퀴를 돌면서 받는 사람에게 행운을 주었고 지금은 당신에게로 옮겨진 이 편지는 4일 안에 당신 곁을 떠나야 합니다.\n이 편지를 포함해서 7통을 행운이 필요한 사람에게 보내 주셔야 합니다. 복사를 해도 좋습니다. \n혹 미신이라 하실지 모르지만 사실입니다.");
+        patternWrapper.style.display = "none";
+        canvas.style.display = "none";
+        lockoutMessage.style.display = "none";
+        timeDisplay.style.display = "none";
+      } else {
+        failureCount++;
+        if (failureCount >= 5) {
+          startLockout();
+        } else {
+          errorFeedback();
+        }
+      }
+    }
+
+    function startLockout() {
+      isLockedOut = true;
+      lockoutTimer = 30;
+      lockoutMessage.textContent = `패턴을 5회 잘못 입력하였습니다. \n ${lockoutTimer}초 후 다시 입력하실 수 있습니다.`;
+
+      lockoutInterval = setInterval(() => {
+        lockoutTimer--;
+        if (lockoutTimer <= 0) {
+          clearInterval(lockoutInterval);
+          lockoutMessage.textContent = "";
+          isLockedOut = false;
+          failureCount = 0;
+        } else {
+          lockoutMessage.textContent = `패턴을 5회 잘못 입력하였습니다. \n ${lockoutTimer}초 후 다시 입력하실 수 있습니다.`;
+        }
+      }, 1000);
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      userPattern = [];
+      selectedDots = [];
+    }
+
+    function errorFeedback() {
+      container.classList.add("shake");
+      dots.forEach((dot) => dot.classList.add("error"));
+      redrawLines("red");
+
+      setTimeout(() => {
+        container.classList.remove("shake");
+        dots.forEach((dot) => dot.classList.remove("error"));
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        userPattern = [];
+        selectedDots = [];
+      }, 200);
+    }
+
+    function showMessage(text) {
+      const msgBox = document.getElementById("message");
+      msgBox.textContent = "";
+      let i = 0;
+      messageShown = true;
+      const interval = setInterval(() => {
+        msgBox.textContent += text[i];
+        i++;
+        if (i >= text.length) clearInterval(interval);
+      }, 80);
+    }
+
+    function getDotFromElement(el) {
+      return el?.classList.contains("dot") ? el : null;
+    }
+
+    container.addEventListener("pointerdown", (e) => {
+      if (messageShown || isLockedOut) return;
+      const target = getDotFromElement(e.target);
+      if (target) {
+        startDrag(e, target);
+      }
+    });
+
+    container.addEventListener("pointermove", (e) => {
+      if (!dragging || isLockedOut) return;
+      e.preventDefault();
+      currentPos = { x: e.clientX, y: e.clientY };
+      redrawLines();
+
+      const element = document.elementFromPoint(e.clientX, e.clientY);
+      const dot = getDotFromElement(element);
+      if (dot && !selectedDots.includes(dot)) {
+        const id = parseInt(dot.dataset.id);
+        userPattern.push(id);
+        selectedDots.push(dot);
+        redrawLines();
+      }
+    });
+
+    container.addEventListener("pointerup", () => {
+      if (!dragging || isLockedOut) return;
+      dragging = false;
+      if (userPattern.length === 0) return;
+      checkPattern();
+    });
+
+    function startDrag(event, dot) {
+      dragging = true;
+      userPattern = [];
+      selectedDots = [];
+      const id = parseInt(dot.dataset.id);
+      userPattern.push(id);
+      selectedDots.push(dot);
+      currentPos = { x: event.clientX, y: event.clientY };
+      redrawLines();
+    }
+
+    function updateTime() {
+      const now = new Date();
+      const h = now.getHours().toString().padStart(2, "0");
+      const m = now.getMinutes().toString().padStart(2, "0");
+      document.getElementById("timeDisplay").textContent = `${h}:${m}`;
+    }
+
+    setInterval(updateTime, 1000);
+    updateTime();
+  </script>
+</body>
+</html>
