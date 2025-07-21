@@ -141,7 +141,7 @@
     let messageShown = false;
     let failureCount = 0;
     let isLockedOut = false;
-    let lockoutTimer = 30;
+    let lockoutTimer = 20;
     let lockoutInterval;
 
     const canvas = document.getElementById("lineCanvas");
@@ -212,7 +212,7 @@
 
     function startLockout() {
       isLockedOut = true;
-      lockoutTimer = 30;
+      lockoutTimer = 20;
       lockoutMessage.textContent = `패턴을 5회 잘못 입력하였습니다. \n ${lockoutTimer}초 후 다시 입력하실 수 있습니다.`;
 
       lockoutInterval = setInterval(() => {
